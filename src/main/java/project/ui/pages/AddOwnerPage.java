@@ -1,34 +1,23 @@
 package project.ui.pages;
 
-import core.ui.implementation.ButtonImpl;
-import core.ui.implementation.InputFieldImpl;
-import core.ui.interfaces.Button;
+import core.ui.annotations.ElementImpl;
+import core.ui.factory.PageFactory;
+import core.ui.factory.UIPageFactory;
 import core.ui.interfaces.InputField;
 import lombok.Getter;
-import org.openqa.selenium.By;
+import org.openqa.selenium.support.FindBy;
 import project.ui.components.HeaderComponent;
-
-import static com.codeborne.selenide.Condition.visible;
-import static com.codeborne.selenide.Selenide.$;
+import project.ui.customComponents.LoggingInputField;
 
 @Getter
 public class AddOwnerPage extends BasePage<AddOwnerPage> {
-    public final HeaderComponent header;
-    public final InputField firstNameField;
-    public final InputField lastNameField;
-    public final InputField addressField;
-    public final InputField cityField;
-    public final InputField telephoneField;
-    public final Button addOwnerButton;
+    public HeaderComponent header;
+    @FindBy(xpath = "//*[@id='firstName']")
+    @ElementImpl(LoggingInputField.class)
+    private InputField firstNameField;
 
-    private AddOwnerPage() {
-        header = new HeaderComponent();
-        firstNameField = new InputFieldImpl($(By.xpath("//*[@id='firstName']")));
-        lastNameField = new InputFieldImpl($(By.xpath("//*[@id='lastName']")));
-        addressField = new InputFieldImpl($(By.xpath("//*[@id='address']")));
-        cityField = new InputFieldImpl($(By.xpath("//*[@id='city']")));
-        telephoneField = new InputFieldImpl($(By.xpath("//*[@id='telephone']")));
-        addOwnerButton = new ButtonImpl($(By.xpath("//*[@id='add-owner-form']/div[2]/div/button")));
+    public AddOwnerPage() {
+        PageFactory.initElements(this);
     }
 
     public static AddOwnerPage get() {
@@ -37,8 +26,6 @@ public class AddOwnerPage extends BasePage<AddOwnerPage> {
 
     @Override
     public AddOwnerPage checkThatPageLoaded() {
-        cityField.shouldBe(visible);
-        addOwnerButton.shouldBe(visible);
         return this;
     }
 

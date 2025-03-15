@@ -7,6 +7,8 @@ import com.codeborne.selenide.WebElementCondition;
 import core.ui.interfaces.UiElement;
 import groovy.util.logging.Slf4j;
 import io.qameta.allure.Step;
+import lombok.Getter;
+import lombok.Setter;
 import org.jspecify.annotations.NonNull;
 
 import org.slf4j.Logger;
@@ -21,6 +23,8 @@ public class UiElementImpl implements UiElement {
 
     @NonNull
     protected final SelenideElement element;
+    @Getter @Setter
+    protected String title;
 
     public UiElementImpl(@NonNull SelenideElement element) {
         this.element = element;

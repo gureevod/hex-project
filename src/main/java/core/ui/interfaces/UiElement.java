@@ -52,4 +52,8 @@ public interface UiElement {
     void shouldHave(WebElementCondition condition);
 
     void shouldNotHave(WebElementCondition condition);
+
+    void setTitle(String title);
+
+    String getTitle();
 }
