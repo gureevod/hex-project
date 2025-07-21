@@ -1,114 +1,86 @@
 package core.api;
 
-import io.qameta.allure.Allure;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.filter.Filter;
-import io.restassured.filter.FilterContext;
 import io.restassured.http.ContentType;
-import io.restassured.response.Response;
-import io.restassured.specification.FilterableRequestSpecification;
-import io.restassured.specification.FilterableResponseSpecification;
 import io.restassured.specification.RequestSpecification;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.List;
 
 public class RestClient {
+    private final RequestSpecification baseSpec;
+    private final int maxRetries;
+    private final long retryDelayMillis;
+    private final List<Filter> filters;
+    private final RetryStrategy retryStrategy;
+    private final ResponseValidator responseValidator;
 
-    private static final Logger logger = LoggerFactory.getLogger(RestClient.class);
-    private static final int DEFAULT_MAX_RETRIES = 2; // Or from Config
-    private static final long DEFAULT_RETRY_DELAY_MILLIS = 1000; //Or from config
-
-    // Prevent instantiation
-    private RestClient() {}
-
-    public static Response get(String path) {
-        return get(path, RestAssured.given(), DEFAULT_MAX_RETRIES);
-    }
-    public static Response get(String path, RequestSpecification requestSpec) {
-        return get(path, requestSpec, DEFAULT_MAX_RETRIES);
-    }
-
-    public static Response get(String path, RequestSpecification requestSpec, int maxRetries) {
-        return executeWithRetry(() -> sendRequest("GET", path, requestSpec), maxRetries, getConfiguredRetryDelay());
+    private RestClient(Builder builder) {
+        this.baseSpec = builder.baseSpec;
+        this.maxRetries = builder.maxRetries;
+        this.retryDelayMillis = builder.retryDelayMillis;
+        this.filters = new ArrayList<>(builder.filters);
+        this.retryStrategy = builder.retryStrategy;
+        this.responseValidator = builder.responseValidator;
     }
 
-    public static Response post(String path, Object body) {
-        return post(path, body,  RestAssured.given(), DEFAULT_MAX_RETRIES);
-    }
-    public static Response post(String path, Object body, RequestSpecification requestSpec) {
-        return post(path, body,  requestSpec, DEFAULT_MAX_RETRIES);
+    public RequestBuilder get(String path) {
+        return new RequestBuilder(this, "GET", path);
     }
 
-    public static Response post(String path, Object body, RequestSpecification requestSpec, int maxRetries) {
-        return executeWithRetry(() -> sendRequest("POST", path, requestSpec.body(body)), maxRetries, getConfiguredRetryDelay());
+    public RequestBuilder post(String path) {
+        return new RequestBuilder(this, "POST", path);
     }
 
-    public static Response put(String path, Object body) {
-        return put(path, body, RestAssured.given(), DEFAULT_MAX_RETRIES);
+    public RequestBuilder put(String path) {
+        return new RequestBuilder(this, "PUT", path);
     }
 
-    public static Response put(String path, Object body, RequestSpecification requestSpec) {
-        return put(path, body, requestSpec, DEFAULT_MAX_RETRIES);
-    }
-    public static Response put(String path, Object body, RequestSpecification requestSpec, int maxRetries) {
-        return executeWithRetry(() -> sendRequest("PUT", path, requestSpec.body(body)), maxRetries, getConfiguredRetryDelay());
+    public RequestBuilder delete(String path) {
+        return new RequestBuilder(this, "DELETE", path);
     }
 
-    public static Response delete(String path) {
-        return delete(path, RestAssured.given(), DEFAULT_MAX_RETRIES);
+    public RequestBuilder patch(String path) {
+        return new RequestBuilder(this, "PATCH", path);
     }
 
-    public static Response delete(String path, RequestSpecification requestSpec) {
-        return delete(path, requestSpec, DEFAULT_MAX_RETRIES);
-    }
-    public static Response delete(String path, RequestSpecification requestSpec, int maxRetries) {
-        return executeWithRetry(() -> sendRequest("DELETE", path, requestSpec), maxRetries, getConfiguredRetryDelay());
-    }
-    public static Response patch(String path, Object body) {
-        return patch(path, body, RestAssured.given(), DEFAULT_MAX_RETRIES);
-    }
-    public static Response patch(String path, Object body, RequestSpecification requestSpec) {
-        return patch(path, body, requestSpec, DEFAULT_MAX_RETRIES);
-    }
-    public static Response patch(String path, Object body, RequestSpecification requestSpec, int maxRetries) {
-        return executeWithRetry(() -> sendRequest("PATCH", path, requestSpec.body(body)), maxRetries, getConfiguredRetryDelay());
-    }
-    private static Response sendRequest(String method, String path, RequestSpecification requestSpec) {
-        // Apply Allure filter here, rather than baking it into a base spec
-        RequestSpecification finalSpec = requestSpec.filter(new AllureReportingFilter());
-
-        return RestAssured.given()
-                .spec(finalSpec)
-                .request(method, path);
+    /**
+     * Create a request with a custom specification for this particular request
+     */
+    public RequestBuilder get(String path, RequestSpecification customSpec) {
+        return new RequestBuilder(this, "GET", path).specification(customSpec);
     }
 
-    private static Response executeWithRetry(RequestSupplier request, int maxRetries, long retryDelayMillis) {
-        AtomicReference<Response> response = new AtomicReference<>();
-        int attempts = 0;
-        while (true) {
-            try {
-                response.set(request.get());
-                return response.get();
-            } catch (Exception e) {
-                attempts++;
-                if (attempts > maxRetries) {
-                    throw new RestClientException("Request failed after " + maxRetries + " retries.", e, null);
-                }
-                logger.warn("Attempt {} failed: {}. Retrying in {}ms", attempts, e.getMessage(), retryDelayMillis);
-                try {
-                    TimeUnit.MILLISECONDS.sleep(retryDelayMillis);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                    throw new RestClientException("Request interrupted.", ignored, null);
-                }
-            }
-        }
+    public RequestBuilder post(String path, RequestSpecification customSpec) {
+        return new RequestBuilder(this, "POST", path).specification(customSpec);
     }
 
+    public RequestBuilder put(String path, RequestSpecification customSpec) {
+        return new RequestBuilder(this, "PUT", path).specification(customSpec);
+    }
+
+    public RequestBuilder delete(String path, RequestSpecification customSpec) {
+        return new RequestBuilder(this, "DELETE", path).specification(customSpec);
+    }
+
+    public RequestBuilder patch(String path, RequestSpecification customSpec) {
+        return new RequestBuilder(this, "PATCH", path).specification(customSpec);
+    }
+
+    /**
+     * Generic method for creating a request with any HTTP method and custom specification
+     */
+    public RequestBuilder request(String method, String path, RequestSpecification customSpec) {
+        return new RequestBuilder(this, method, path).specification(customSpec);
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    // Factory methods for common configurations
     public static RequestSpecification jsonConfig() {
         return new RequestSpecBuilder()
                 .setContentType(ContentType.JSON)
@@ -123,54 +95,90 @@ public class RestClient {
                 .build();
     }
 
-    private static class AllureReportingFilter implements Filter {
-        @Override
-        public Response filter(FilterableRequestSpecification requestSpec, FilterableResponseSpecification responseSpec, FilterContext ctx) {
-            String requestBody = requestSpec.getBody() != null ? requestSpec.getBody().toString() : "null";
-            //String requestBody = requestSpec.getBody(); // for raw bytes representation
-
-            Allure.addAttachment("Request",
-                    "Method: " + requestSpec.getMethod() + "\n" +
-                            "URI: " + requestSpec.getURI() + "\n" +
-                            "Headers: " + requestSpec.getHeaders() + "\n" +
-                            "Body: " + requestBody );
-
-            Response response = ctx.next(requestSpec, responseSpec);
-
-            String responseBody = response.getBody().asString();
-
-            Allure.addAttachment("Response",
-                    "Status: " + response.getStatusCode() + "\n" +
-                            "Headers: " + response.getHeaders() + "\n" +
-                            "Body: " + responseBody);
-
-            return response;
-        }
-    }
-    public static class RestClientException extends RuntimeException {
-        private final transient Response response;
-
-        public RestClientException(String message, Throwable cause, Response response) {
-            super(message, cause);
-            this.response = response;
-        }
-
-        public Response getResponse() {
-            return response;
-        }
+    public static RequestSpecification formConfig() {
+        return new RequestSpecBuilder()
+                .setContentType(ContentType.URLENC)
+                .build();
     }
 
-    @FunctionalInterface
-    private interface RequestSupplier {
-        Response get() throws Exception;
+    public static RequestSpecification multipartConfig() {
+        return new RequestSpecBuilder()
+                .setContentType(ContentType.MULTIPART)
+                .build();
     }
 
-    // Placeholder for config retrieval.  Replace with your actual config mechanism.
-    private static long getConfiguredRetryDelay() {
-        // Example: return ConfigFactory.load().getLong("api.retry.delayMillis");
-        // Or, use Owner:  return ConfigProvider.getConfig().getRetryDelayMillis();
-        return DEFAULT_RETRY_DELAY_MILLIS; //Fall back to default value
+    // Getters for internal use
+    RequestSpecification getBaseSpec() {
+        return baseSpec;
+    }
+
+    int getMaxRetries() {
+        return maxRetries;
+    }
+
+    long getRetryDelayMillis() {
+        return retryDelayMillis;
+    }
+
+    List<Filter> getFilters() {
+        return filters;
+    }
+
+    RetryStrategy getRetryStrategy() {
+        return retryStrategy;
+    }
+
+    ResponseValidator getResponseValidator() {
+        return responseValidator;
+    }
+
+    public static class Builder {
+        private RequestSpecification baseSpec = RestAssured.given();
+        private int maxRetries = 2;
+        private long retryDelayMillis = 1000;
+        private List<Filter> filters = new ArrayList<>();
+        private RetryStrategy retryStrategy = RetryStrategies.onServerErrors();
+        private ResponseValidator responseValidator = ResponseValidators.statusCodeSuccess();
+
+        public Builder baseSpec(RequestSpecification baseSpec) {
+            this.baseSpec = baseSpec;
+            return this;
+        }
+
+        public Builder maxRetries(int maxRetries) {
+            this.maxRetries = maxRetries;
+            return this;
+        }
+
+        public Builder retryDelayMillis(long retryDelayMillis) {
+            this.retryDelayMillis = retryDelayMillis;
+            return this;
+        }
+
+        public Builder addFilter(Filter filter) {
+            this.filters.add(filter);
+            return this;
+        }
+
+        public Builder withAllureReporting(boolean enabled) {
+            if (enabled) {
+                this.filters.add(new AllureReportingFilter());
+            }
+            return this;
+        }
+
+        public Builder retryStrategy(RetryStrategy retryStrategy) {
+            this.retryStrategy = retryStrategy;
+            return this;
+        }
+
+        public Builder responseValidator(ResponseValidator responseValidator) {
+            this.responseValidator = responseValidator;
+            return this;
+        }
+
+        public RestClient build() {
+            return new RestClient(this);
+        }
     }
 }
-
-
